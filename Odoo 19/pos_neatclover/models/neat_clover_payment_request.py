@@ -4,7 +4,6 @@
 # This module extends Odoo's payment framework.
 # Odoo is a trademark of Odoo S.A.
 import logging
-import uuid
 from odoo import api, fields, models, _
 
 _logger = logging.getLogger(__name__)
@@ -12,6 +11,10 @@ _logger = logging.getLogger(__name__)
 class NeatCloverPaymentRequest(models.Model):
     _name = 'neat.clover.payment.request'
     _description = 'NEAT Clover Payment Request'
+
+    _sql_constraints = [
+        ('transaction_id_unique', 'unique(transaction_id)', 'Transaction ID must be unique.'),
+    ]
 
     @api.model
     def create(self, vals):

@@ -6,20 +6,28 @@
 import logging
 import pprint
 import json
-import uuid
 from odoo import fields, http
+from odoo.exceptions import ValidationError
 from odoo.http import request
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 import werkzeug.wrappers
 import time
-from .config import timeout_delta
+from .config import timeout_delta, generate_transaction_id
 from cryptography.fernet import Fernet
 from decimal import Decimal, getcontext
 _logger = logging.getLogger(__name__)
 
 
 class PosCloverController(http.Controller):
+    def _generate_transaction_id(self):
+        payment_request_model = request.env['neat.clover.payment.request'].sudo()
+        for _ in range(100):
+            transaction_id = generate_transaction_id()
+            if not payment_request_model.search_count([('transaction_id', '=', transaction_id)]):
+                return transaction_id
+        raise ValidationError('Could not generate a unique transaction ID.')
+
     def _get_active_payment_requests(self, terminal_id, order_id):
         current_datetime = datetime.utcnow()
         two_minutes_ago = current_datetime - timeout_delta + timedelta(seconds=5)
@@ -230,7 +238,7 @@ class PosCloverController(http.Controller):
                     _logger.info("create_payment_request called for order_id: " + str(order_id) + " amount: " + str(amount) + " user_id: " + str(user_id) + " returning 403 because user_id or order_id mismatch")
                     return {'status': 403}
                 current_payment_request_ref.write({'status': 'cancelled'})
-            transaction_id = uuid.uuid4()
+            transaction_id = self._generate_transaction_id()
             _logger.info("cancel_payment_request order_id: " + str(order_id) + " generated transaction_id: " + str(transaction_id))
             payment_request = {
                 'terminal_id': terminal_id,
