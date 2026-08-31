@@ -9,3 +9,6 @@ from . import pos_session
 from . import neat_clover_payment_request
 from . import neat_clover_security
 from . import neat_clover_settings
+from . import clover_document_payment
+from . import sale_order
+from . import account_move

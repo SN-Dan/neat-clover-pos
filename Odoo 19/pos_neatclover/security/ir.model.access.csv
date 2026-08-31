@@ -2,3 +2,5 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_neat_clover_payment_request_user,access.neat.clover.payment.request.user,model_neat_clover_payment_request,base.group_user,1,1,1,0
 access_neat_clover_payment_request_manager,access.neat.clover.payment.request.manager,model_neat_clover_payment_request,base.group_erp_manager,1,1,1,1
 access_neat.clover.security,access.neat.clover.security,model_neat_clover_security,base.group_erp_manager,1,1,1,1
+access_clover_terminal_payment_wizard,access.clover.terminal.payment.wizard,model_clover_terminal_payment_wizard,base.group_user,1,1,1,1
+access_clover_terminal_refund_wizard,access.clover.terminal.refund.wizard,model_clover_terminal_refund_wizard,base.group_user,1,1,1,1

@@ -5,3 +5,4 @@
 # Odoo is a trademark of Odoo S.A.
 from . import main
 from . import config
+from . import document
