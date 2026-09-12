@@ -16,22 +16,15 @@
     'data': [
         'security/ir.model.access.csv',
         'views/pos_payment_method_views.xml',
-        'views/sale_order_views.xml',
-        'views/account_move_views.xml',
-        'views/clover_terminal_payment_templates.xml',
-        'wizard/clover_terminal_wizard_views.xml',
     ],
     'external_dependencies': {
         'python': ['cryptography']
     },
-    'depends': ['point_of_sale', 'sale', 'account'],
+    'depends': ['point_of_sale'],
     'qweb': [],
     'images': ['static/description/main.gif'],
     'assets': {
-        'web.assets_backend': [
-            'pos_neatclover/static/src/css/clover_terminal_wizard.css',
-        ],
-        'point_of_sale._assets_pos': [
+        'point_of_sale.assets': [
             'pos_neatclover/static/**/*',
         ]
     },

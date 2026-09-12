@@ -12,4 +12,4 @@ class NeatCloverSettings(models.Model):
     _description = 'NEAT Clover User Settings'
 
     promotion_displayed = fields.Boolean('Promotion Displayed')
-    license_key = fields.Text('License Key', required=False, readonly=False, store=True)
+    license_key = fields.Text('Activation Code', required=False, readonly=False, store=True)

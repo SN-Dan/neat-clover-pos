@@ -18,6 +18,28 @@
                 <field name="neat_clover_is_mobile" attrs="{'invisible': [('use_payment_terminal', '!=', 'neatclover')]}"/>
                 <field name="neat_clover_self_signed_certificates" attrs="{'invisible': [('use_payment_terminal', '!=', 'neatclover')]}"/>
                 <field name="neat_clover_is_desktop_mode" attrs="{'invisible': [('use_payment_terminal', '!=', 'neatclover')]}"/>
+                <script type="text/javascript" src="/pos_neatclover/static/src/js/neatclover_activation.js"/>
+                <link rel="stylesheet" href="/pos_neatclover/static/src/css/neatclover_activation.css"/>
+                <div class="alert alert-success" role="alert" colspan="2"
+                     attrs="{'invisible': ['|', ('use_payment_terminal', '!=', 'neatclover'), ('neat_clover_desktop_api_key', '!=', False)]}">
+                    Don't have an Activation Code yet?<br/>
+                    <a href="#" name="activation-code-button" onclick="showActivationForm(event)">
+                        Get a free activation code
+                    </a>
+                    <div id="neatclover_form" class="neatclover-popup">
+                        <h3>Request an Activation Code</h3>
+                        <div id="neatclover_request_form">
+
+                        </div>
+                        <a href="#" class="neatclover_submit" name="neatclover_submit">Submit</a>
+                        <a href="#" class="neatclover_close_form" name="neatclover_close_form">Cancel</a>
+                    </div>
+                </div>
+                <field name="neat_clover_desktop_api_key" password="True"
+                    attrs="{
+                        'invisible': [('use_payment_terminal', '!=', 'neatclover')],
+                        'required': [('use_payment_terminal', '=', 'neatclover')]
+                    }"/>
                 <field name="neat_clover_is_local_ws_server" attrs="{'invisible': [('use_payment_terminal', '!=', 'neatclover')], 'readonly': [('neat_clover_is_desktop_mode', '!=', True)]}"/>
                 <field name="neat_clover_is_readonly" invisible="1"/>
                 <field name="neat_clover_ws_url"
@@ -25,12 +47,25 @@
                         'invisible': [('use_payment_terminal', '!=', 'neatclover')],
                         'readonly': [('neat_clover_is_readonly', '=', True)]
                     }"/>
-                    
                 <field name="neat_clover_is_terminal_printer_communication_allowed"
                     attrs="{
                         'invisible': [('use_payment_terminal', '!=', 'neatclover')],
-                        'readonly': [('neat_clover_is_readonly', '=', True)]
+                        'readonly': [('neat_clover_is_desktop_mode', '!=', True)]
                     }"/>
+                <div class="alert alert-success" role="alert" colspan="2"
+                     attrs="{'invisible': [('use_payment_terminal', '!=', 'neatclover')]}">
+                    <b>By using this module you agree to our </b>
+                    <a href="#" onclick="showTermsPopup(event)">
+                        terms and conditions
+                    </a>
+                    <div id="neatclover_terms_popup" class="neatclover-popup neatclover-terms-popup">
+                        <h3>Terms and Conditions</h3>
+                        <div id="neatclover_terms_content" class="neatclover-terms-content">
+                            Loading...
+                        </div>
+                        <a href="#" class="neatclover_close_terms" name="neatclover_close_terms">Close</a>
+                    </div>
+                </div>
             </xpath>
         </field>
     </record>

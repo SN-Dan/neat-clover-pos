@@ -238,7 +238,14 @@ class PosCloverController(http.Controller):
                     _logger.info("create_payment_request called for order_id: " + str(order_id) + " amount: " + str(amount) + " user_id: " + str(user_id) + " returning 403 because user_id or order_id mismatch")
                     return {'status': 403}
                 current_payment_request_ref.write({'status': 'cancelled'})
-            transaction_id = self._generate_transaction_id()
+            if is_document_payment and amount > 0:
+                if 'clover.document.payment' not in request.env:
+                    raise ValidationError('Clover sales/invoice payments require the Clover PoS Sale/Invoice Payments module.')
+                transaction_id = request.env['clover.document.payment'].sudo().create_document_payment_transaction(
+                    order_id, amount,
+                )
+            else:
+                transaction_id = self._generate_transaction_id()
             _logger.info("cancel_payment_request order_id: " + str(order_id) + " generated transaction_id: " + str(transaction_id))
             payment_request = {
                 'terminal_id': terminal_id,
@@ -549,7 +556,7 @@ class PosCloverController(http.Controller):
 
         current_payment_requests[0].write(pr)
         cpr = current_payment_requests[0]
-        if status in ('done', 'refunded', 'resent_done', 'resent_refunded'):
+        if status in ('done', 'refunded', 'resent_done', 'resent_refunded') and 'clover.document.payment' in http.request.env:
             document_helpers = http.request.env['clover.document.payment'].sudo()
             if document_helpers.is_quotation_or_invoice_request(cpr):
                 document_helpers.finalize_document_payment_request(
@@ -730,11 +737,28 @@ class PosCloverController(http.Controller):
                 'name': pos_payment_method[0].name, 
                 'url': pos_payment_method[0].company_id.website,
                 'ws_url': pos_payment_method[0].neat_clover_ws_url,
+                'desktop_api_key': pos_payment_method[0].neat_clover_desktop_api_key or '',
                 'is_desktop_mode': pos_payment_method[0].neat_clover_is_desktop_mode,
                 'is_local_ws_server': pos_payment_method[0].neat_clover_is_local_ws_server,
                 'self_signed_certificates': pos_payment_method[0].neat_clover_self_signed_certificates
             } 
         })
+
+    @http.route('/pos_clover/device_codes', type='json', auth='user', methods=['POST'])
+    def device_codes(self):
+        """Return Clover terminal device codes for the POS sync picker."""
+        payment_methods = http.request.env['pos.payment.method'].search([
+            ('use_payment_terminal', '=', 'neatclover'),
+            ('neat_clover_terminal_device_code', '!=', False),
+        ])
+        data = []
+        for pm in payment_methods:
+            data.append({
+                'id': pm.id,
+                'device_code': pm.neat_clover_terminal_device_code,
+                'name': pm.name or '',
+            })
+        return {'status': 200, 'data': data}
 
 
 
