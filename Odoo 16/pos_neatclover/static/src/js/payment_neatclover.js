@@ -253,7 +253,10 @@ odoo.define('pos_neatclover.payment', function(require) {
                     wsUrl = NEAT_CLOVER_ONLINE_WS_URL
                     isOnlineDesktop = true
                 }
-                if(wsUrl) {
+                var syncedDeviceCode = localStorage.getItem("neat_synced_device_code");
+                var pmDeviceCode = this.payment_method.neat_clover_terminal_device_code;
+                // Only wire/connect desktop WS for the payment method matching the synced terminal
+                if(wsUrl && (!syncedDeviceCode || syncedDeviceCode === pmDeviceCode)) {
                     window.desktop_ws_url = wsUrl
                     window.desktop_ws_is_online = isOnlineDesktop
                     window.desktop_ws_payment_method_id = this.payment_method.id
@@ -295,7 +298,7 @@ odoo.define('pos_neatclover.payment', function(require) {
                         }
                         return true;
                     };
-                    if(localStorage.getItem("neat_synced_device_code")) {
+                    if(syncedDeviceCode === pmDeviceCode) {
                         socket_connect(true)
                     }
                     else {

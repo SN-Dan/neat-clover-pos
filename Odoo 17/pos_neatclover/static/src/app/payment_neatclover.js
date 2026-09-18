@@ -251,7 +251,10 @@ export class PaymentNeatClover extends PaymentInterface {
                 wsUrl = NEAT_CLOVER_ONLINE_WS_URL
                 isOnlineDesktop = true
             }
-            if(wsUrl) {
+            var syncedDeviceCode = localStorage.getItem("neat_synced_device_code");
+            var pmDeviceCode = pm.neat_clover_terminal_device_code;
+            // Only wire/connect desktop WS for the payment method matching the synced terminal
+            if(wsUrl && (!syncedDeviceCode || syncedDeviceCode === pmDeviceCode)) {
                 window.socket_connect = this.socket_connect.bind(this)
                 window.desktop_ws_url = wsUrl
                 window.desktop_ws_is_online = isOnlineDesktop
@@ -287,7 +290,7 @@ export class PaymentNeatClover extends PaymentInterface {
                     }
                     return true;
                 };
-                if(localStorage.getItem("neat_synced_device_code")) {
+                if(syncedDeviceCode === pmDeviceCode) {
                     this.socket_connect(true)
                 }
                 else {

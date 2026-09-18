@@ -17,22 +17,13 @@
                 <field name="neat_clover_is_mobile" invisible="use_payment_terminal != 'neatclover'"/>
                 <field name="neat_clover_self_signed_certificates" invisible="use_payment_terminal != 'neatclover'"/>
                 <field name="neat_clover_is_desktop_mode" invisible="use_payment_terminal != 'neatclover'"/>
-                <script type="text/javascript" src="/pos_neatclover/static/src/js/neatclover_activation.js"/>
-                <link rel="stylesheet" href="/pos_neatclover/static/src/css/neatclover_activation.css"/>
-                <div class="alert alert-success" role="alert" colspan="2"
+<div class="alert alert-success" role="alert" colspan="2"
                      invisible="use_payment_terminal != 'neatclover' or neat_clover_desktop_api_key">
                     Don't have an Activation Code yet?<br/>
-                    <a href="#" name="activation-code-button" onclick="showActivationForm(event)">
+                    
+                    <a href="https://api.sns-software.com/license-request?provider=clover" target="_blank" rel="noopener noreferrer">
                         Get a free activation code
                     </a>
-                    <div id="neatclover_form" class="neatclover-popup">
-                        <h3>Request an Activation Code</h3>
-                        <div id="neatclover_request_form">
-
-                        </div>
-                        <a href="#" class="neatclover_submit" name="neatclover_submit">Submit</a>
-                        <a href="#" class="neatclover_close_form" name="neatclover_close_form">Cancel</a>
-                    </div>
                 </div>
                 <field name="neat_clover_desktop_api_key" password="True"
                        invisible="use_payment_terminal != 'neatclover'"
@@ -43,18 +34,12 @@
                 <div class="alert alert-success" role="alert" colspan="2"
                      invisible="use_payment_terminal != 'neatclover'">
                     <b>By using this module you agree to our </b>
-                    <a href="#" onclick="showTermsPopup(event)">
+                    
+                    <a href="https://api.sns-software.com/terms?provider=clover" target="_blank" rel="noopener noreferrer">
                         terms and conditions
                     </a>
-                    <div id="neatclover_terms_popup" class="neatclover-popup neatclover-terms-popup">
-                        <h3>Terms and Conditions</h3>
-                        <div id="neatclover_terms_content" class="neatclover-terms-content">
-                            Loading...
-                        </div>
-                        <a href="#" class="neatclover_close_terms" name="neatclover_close_terms">Close</a>
-                    </div>
                 </div>
-            </xpath>
+                    </xpath>
         </field>
     </record>
 </odoo>
