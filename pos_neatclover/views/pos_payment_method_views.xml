@@ -35,8 +35,12 @@
                      invisible="use_payment_terminal != 'neatclover'">
                     <b>By using this module you agree to our </b>
                     
-                    <a href="https://api.sns-software.com/terms?provider=clover" target="_blank" rel="noopener noreferrer">
+                    <a href="https://api.sns-software.com/terms-and-conditions?provider=clover" target="_blank" rel="noopener noreferrer">
                         terms and conditions
+                    </a>
+                    <b> and </b>
+                    <a href="https://api.sns-software.com/privacy?provider=clover" target="_blank" rel="noopener noreferrer">
+                        privacy policy
                     </a>
                 </div>
                     </xpath>
