@@ -15,6 +15,7 @@
     'data': [
         'security/ir.model.access.csv',
         'views/pos_payment_method_views.xml',
+        'views/neat_clover_payment_request_views.xml',
     ],
     'external_dependencies': {
         'python': ['cryptography']

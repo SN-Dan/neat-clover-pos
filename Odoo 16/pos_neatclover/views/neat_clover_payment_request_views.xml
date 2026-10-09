@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Desktop / tablet Many2one selector -->
+    <record id="view_neat_clover_payment_request_tree" model="ir.ui.view">
+        <field name="name">neat.clover.payment.request.tree</field>
+        <field name="model">neat.clover.payment.request</field>
+        <field name="arch" type="xml">
+            <tree create="false" edit="false" delete="false">
+                <field name="preauth_label" string="Reference"/>
+                <field name="amount_display" string="Amount"/>
+                <field name="terminal_id" string="Terminal"/>
+                <field name="transaction_id" string="Transaction"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Odoo mobile Many2one selector uses kanban, not list -->
+    <record id="view_neat_clover_payment_request_kanban" model="ir.ui.view">
+        <field name="name">neat.clover.payment.request.kanban</field>
+        <field name="model">neat.clover.payment.request</field>
+        <field name="arch" type="xml">
+            <kanban create="false" edit="false" delete="false">
+                <field name="preauth_label"/>
+                <field name="amount_display"/>
+                <field name="terminal_id"/>
+                <field name="transaction_id"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_details">
+                                <strong><field name="preauth_label"/></strong>
+                                <div>Amount: <field name="amount_display"/></div>
+                                <div>Terminal: <field name="terminal_id"/></div>
+                                <div class="text-muted"><field name="transaction_id"/></div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+</odoo>

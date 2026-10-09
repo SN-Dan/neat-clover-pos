@@ -7,4 +7,11 @@
             <span>Sync Device</span>
         </div>
     </t>
+    <t t-name="pos_neatclover.PreAuthButton" owl="1">
+        <div class="control-button">
+            <i class="fa fa-credit-card"/>
+            <span> </span>
+            <span>Clover Pre-Auth</span>
+        </div>
+    </t>
 </templates>

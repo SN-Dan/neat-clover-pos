@@ -56,8 +56,10 @@ class PosCloverController(http.Controller):
         space_index = order_id.find(" ")
         if space_index != -1:
             order_id = order_id[space_index + 1:]
+        # Preauth UTI is not refundable after capture; only sale/capture have the Clover payment id to reverse.
         paid_payments_ref = http.request.env['neat.clover.payment.request'].sudo().search(
-            [('status', 'like', 'processed_%'), ('order_id', '=', order_id), ('amount', '>=', 0)])
+            [('status', 'like', 'processed_%'), ('order_id', '=', order_id), ('amount', '>=', 0),
+             ('request_type', 'in', ('sale', 'capture'))])
         paid_payments = paid_payments_ref.read(['amount', 'refunded_amt', 'uncommited_refunded_amt', 'transaction_id', 'card_type', 'uti', 'rrn'])
         refunds = []
         covered_sum = 0
@@ -91,7 +93,8 @@ class PosCloverController(http.Controller):
         if space_index != -1:
             order_id = order_id[space_index + 1:]
         paid_payments_ref = http.request.env['neat.clover.payment.request'].sudo().search(
-            [('status', 'like', 'processed_%'), ('order_id', '=', order_id)])
+            [('status', 'like', 'processed_%'), ('order_id', '=', order_id),
+             ('request_type', 'in', ('sale', 'capture'))])
         for refund in paid_payments_ref:
             refund.sudo().write({'refunded_amt': refund['uncommited_refunded_amt']})
 
@@ -210,15 +213,69 @@ class PosCloverController(http.Controller):
         return {'status': 200, 'data': {'is_order_the_same': is_order_the_same }}
 
     @http.route('/pos_clover/create_payment_request', type='json', auth='user', methods=['POST'])
-    def create_payment_request(self, terminal_id, order_id, amount, user_id, refunded_order_line_id=None, is_document_payment=False):
+    def create_payment_request(self, terminal_id, order_id, amount, user_id, refunded_order_line_id=None,
+                               is_document_payment=False, request_type='sale', parent_transaction_id=None,
+                               preauth_label=None, partner_id=None):
         if amount is not None:
             decimal_amount = Decimal(str(amount)) * Decimal('100')
             amount = int(decimal_amount)
         if amount == 0:
             _logger.info("create_payment_request called for order_id: " + str(order_id) + " amount: " + str(amount) + " returning 400")
             return { 'status': 400 }
+        if request_type not in ('sale', 'preauth', 'capture', 'void_preauth'):
+            return {'status': 400}
+        PaymentRequest = http.request.env['neat.clover.payment.request'].sudo()
+        parent_request = False
+        if request_type == 'preauth':
+            label = (preauth_label or '').strip()
+            if not label:
+                return {'status': 400, 'error': 'preauth_label_required'}
+            if PaymentRequest.is_preauth_label_taken(label):
+                return {'status': 409, 'error': 'preauth_label_taken'}
+            preauth_label = label
+        if request_type in ('capture', 'void_preauth'):
+            if not parent_transaction_id:
+                return {'status': 400}
+            parent_request = PaymentRequest.search([
+                ('transaction_id', '=', parent_transaction_id),
+                ('request_type', '=', 'preauth'),
+                ('status', '=', 'processed_authorized'),
+            ], limit=1)
+            if not parent_request or not parent_request.uti:
+                return {'status': 404}
+            # Pre-auths are terminal/customer scoped, not locked to the capture order id.
+            if parent_request.terminal_id != terminal_id:
+                return {'status': 400}
+            if partner_id and parent_request.partner_id and parent_request.partner_id.id != partner_id:
+                return {'status': 400}
+            remaining_auth = parent_request.get_remaining_cents()
+            # Block only voided auths, in-flight ops, or fully captured auths.
+            voided = PaymentRequest.search([
+                ('parent_request_id', '=', parent_request.id),
+                ('request_type', '=', 'void_preauth'),
+                ('status', 'in', (
+                    'voided', 'processed_voided',
+                )),
+            ], limit=1)
+            if voided or parent_request.status == 'processed_voided':
+                return {'status': 409}
+            pending = PaymentRequest.search([
+                ('parent_request_id', '=', parent_request.id),
+                ('request_type', 'in', ('capture', 'void_preauth')),
+                ('status', '=', 'pending'),
+                ('start_date', '>=', datetime.utcnow() - timeout_delta),
+            ], limit=1)
+            if pending:
+                return {'status': 409}
+            if remaining_auth <= 0 or parent_request.status == 'processed_captured':
+                return {'status': 409}
+            # Clamp capture to remaining auth instead of rejecting oversize amounts.
+            if request_type == 'capture' and amount > remaining_auth:
+                amount = remaining_auth
+            if request_type == 'void_preauth':
+                amount = remaining_auth
         log_is_refund = refunded_order_line_id is not None
-        _logger.info("create_payment_request called for order_id: " + str(order_id) + " amount: " + str(amount) + " is_refund: " + str(log_is_refund))
+        _logger.info("create_payment_request called for order_id: " + str(order_id) + " amount: " + str(amount) + " is_refund: " + str(log_is_refund) + " request_type: " + str(request_type))
         current_datetime = datetime.utcnow()
         two_minutes_ago = current_datetime - timeout_delta
         current_payment_requests_ref = http.request.env['neat.clover.payment.request'].search(
@@ -239,7 +296,13 @@ class PosCloverController(http.Controller):
                     _logger.info("create_payment_request called for order_id: " + str(order_id) + " amount: " + str(amount) + " user_id: " + str(user_id) + " returning 403 because user_id or order_id mismatch")
                     return {'status': 403}
                 current_payment_request_ref.write({'status': 'cancelled'})
-            if is_document_payment and amount > 0:
+            # Only real money movements create a payment.transaction (sale + capture).
+            creates_payment_tx = (
+                is_document_payment
+                and amount > 0
+                and request_type in ('sale', 'capture')
+            )
+            if creates_payment_tx:
                 if 'clover.document.payment' not in request.env:
                     raise ValidationError('Clover sales/invoice payments require the Clover PoS Sale/Invoice Payments module.')
                 transaction_id = request.env['clover.document.payment'].sudo().create_document_payment_transaction(
@@ -260,10 +323,22 @@ class PosCloverController(http.Controller):
                 'uncommited_refunded_amt': 0,
                 'transaction_id': transaction_id,
                 'is_document_payment': is_document_payment,
+                'request_type': request_type,
+                'parent_request_id': parent_request.id if parent_request else False,
+                'preauth_label': preauth_label if request_type == 'preauth' else False,
+                'partner_id': partner_id or (
+                    parent_request.partner_id.id if parent_request and parent_request.partner_id else False
+                ),
             }
             request.env['neat.clover.payment.request'].create(payment_request)
             _logger.info("create_payment_request called for order_id: " + str(order_id) + " amount: " + str(amount) + " user_id: " + str(user_id) + " returning 201")
-            return { 'status': 201, 'data': { 'transaction_id': transaction_id } }
+            return {
+                'status': 201,
+                'data': {
+                    'transaction_id': transaction_id,
+                    'amount': float(Decimal(amount) / Decimal('100')),
+                },
+            }
         else:
             current_payment_request = current_resent_requests[0]
             current_payment_request_ref = current_resent_requests_ref[0]
@@ -274,6 +349,50 @@ class PosCloverController(http.Controller):
                 current_payment_requests_ref[0].write({ 'status': 'cancelled' })
             _logger.info("create_payment_request called for order_id: " + str(order_id) + " amount: " + str(amount) + " user_id: " + str(user_id) + " returning 200")
             return {'status': 200, 'data': {'transaction_id': current_payment_request['transaction_id']}}
+
+    @http.route('/pos_clover/list_open_preauths', type='json', auth='user', methods=['POST'])
+    def list_open_preauths(self, terminal_id=None, partner_id=None):
+        PaymentRequest = http.request.env['neat.clover.payment.request'].sudo()
+        preauths = PaymentRequest.get_open_preauth_requests(
+            terminal_id=terminal_id or None,
+            partner_id=partner_id or None,
+        )
+        return {
+            'status': 200,
+            'data': {
+                'preauths': [p.to_open_preauth_dict() for p in preauths],
+            },
+        }
+
+
+    @http.route('/pos_clover/delete_preauth', type='json', auth='user', methods=['POST'])
+    def delete_preauth(self, terminal_id=None, transaction_id=None):
+        """Delete/close a pre-auth in Odoo only (no terminal void)."""
+        if not transaction_id:
+            return {'status': 400}
+        PaymentRequest = http.request.env['neat.clover.payment.request'].sudo()
+        domain = [
+            ('transaction_id', '=', transaction_id),
+            ('request_type', '=', 'preauth'),
+        ]
+        if terminal_id:
+            domain.append(('terminal_id', '=', terminal_id))
+        preauth = PaymentRequest.search(domain, limit=1)
+        if not preauth:
+            return {'status': 404}
+        if not preauth.mark_as_deleted():
+            return {'status': 409}
+        return {'status': 200, 'data': {'transaction_id': preauth.transaction_id}}
+
+    @http.route('/pos_clover/suggest_preauth_label', type='json', auth='user', methods=['POST'])
+    def suggest_preauth_label(self, base_label=None):
+        PaymentRequest = http.request.env['neat.clover.payment.request'].sudo()
+        return {
+            'status': 200,
+            'data': {
+                'preauth_label': PaymentRequest.suggest_preauth_label(base_label or ''),
+            },
+        }
 
     @http.route('/pos_clover/cancel_payment_request', type='json', auth='user', methods=['POST'])
     def cancel_payment_request(self, terminal_id, order_id):
@@ -339,11 +458,27 @@ class PosCloverController(http.Controller):
             _logger.info("check_request called for transaction_id: " + str(transaction_id) + " returning 404 because no requests found")
             return {'status': 404}
         cpr = current_payment_requests[0]
+        request_type = cpr['request_type'] or 'sale'
+        if cpr['status'] == 'authorized' and request_type == 'preauth':
+            cpr.write({'status': 'processed_authorized'})
+            _logger.info("request_processed preauth for transaction_id: " + str(transaction_id) + " returning 200")
+            return {'status': 200}
+        if cpr['status'] == 'voided' and request_type == 'void_preauth':
+            if cpr['parent_request_id'] and cpr['parent_request_id'].status in ('authorized', 'processed_authorized'):
+                cpr['parent_request_id'].write({'status': 'processed_voided'})
+            cpr.write({'status': 'processed_voided'})
+            _logger.info("request_processed void for transaction_id: " + str(transaction_id) + " returning 200")
+            return {'status': 200}
         if cpr['status'] != 'done' and cpr['status'] != 'refunded' and cpr['status'] != 'resent_refunded' and cpr['status'] != 'resent_done':
             _logger.info("request_processed called for transaction_id: " + str(transaction_id) + " returning 400 because status is not done, refunded, resent_refunded, or resent_done")
             return { 'status': 400 }
         if cpr['refunded_order_line_id']:
             self.commit_refunds(cpr['refunded_order_line_id'])
+        if request_type == 'capture' and cpr['parent_request_id']:
+            parent = cpr['parent_request_id']
+            # One capture per preauth for now: close after first successful charge.
+            if parent.status in ('authorized', 'processed_authorized'):
+                parent.write({'status': 'processed_captured'})
         cpr.write({ 'status': 'processed_' + cpr['status'] })
         _logger.info("request_processed called for transaction_id: " + str(transaction_id) + " returning 200")
         return { 'status': 200 }
@@ -414,7 +549,10 @@ class PosCloverController(http.Controller):
                 [('terminal_id', '=', res['device_code']), ('status', '=', 'pending'),
                  ('start_date', '>=', two_minutes_ago)])
             if len(current_payment_requests) > 0:
-                read_request = current_payment_requests.read(['amount', 'order_id', 'start_date', 'transaction_id', 'refunded_order_line_id', 'refunded_amt', 'is_document_payment'])[0]
+                read_request = current_payment_requests.read([
+                    'amount', 'order_id', 'start_date', 'transaction_id', 'refunded_order_line_id',
+                    'refunded_amt', 'is_document_payment', 'request_type', 'parent_request_id',
+                ])[0]
                 tokens = self.generate_tokens(res['device_code'], read_request['amount'], read_request['transaction_id'], read_request['start_date'], read_request['refunded_order_line_id'] or (read_request['is_document_payment'] and read_request['amount'] < 0), True)
                 if read_request['refunded_order_line_id']:
                     refunds = self.get_refunds(read_request['refunded_order_line_id'], read_request['amount'])
@@ -431,7 +569,8 @@ class PosCloverController(http.Controller):
                     paid_payments_ref = http.request.env['neat.clover.payment.request'].sudo().search(
                         [('status', 'like', 'processed_%'), ('order_id', '=', read_request['order_id']),
                          ('amount', '>=', 0), ('terminal_id', '=', res['device_code']),
-                         ('is_document_payment', '=', True)])
+                         ('is_document_payment', '=', True),
+                         ('request_type', 'in', ('sale', 'capture'))])
                     paid_payments = paid_payments_ref.read(['amount', 'refunded_amt', 'uncommited_refunded_amt', 'transaction_id', 'card_type', 'uti', 'rrn'])
                     refunds = []
                     covered_sum = 0
@@ -459,9 +598,44 @@ class PosCloverController(http.Controller):
                                                                'refunds': refunds,
                                                                'amount': read_request['amount'],
                                                                'tokens': tokens}})
+                if read_request['amount'] < 0:
+                    # Negative amount without a refund payload must not be treated as a sale.
+                    _logger.info(
+                        "poll_payment_request cancelling transaction_id: %s because negative amount has no refunds",
+                        read_request['transaction_id'],
+                    )
+                    current_payment_requests[0].write({'status': 'cancelled'})
+                    continue
                 current_payment_requests[0].write({'start_date': datetime.utcnow()})
                 _logger.info("poll_payment_request found payment for transaction_id: " + str(read_request['transaction_id']))
-                return json.dumps({ 'status': 200, 'data': { 'transaction_id': read_request['transaction_id'], 'amount': read_request['amount'], 'tokens': tokens } })
+                poll_data = {
+                    'transaction_id': read_request['transaction_id'],
+                    'amount': read_request['amount'],
+                    'tokens': tokens,
+                }
+                request_type = read_request.get('request_type') or 'sale'
+                if request_type == 'preauth':
+                    poll_data['is_preauth'] = True
+                elif request_type in ('capture', 'void_preauth'):
+                    # .read() returns Many2one as (id, display_name)
+                    parent_id = read_request['parent_request_id']
+                    if isinstance(parent_id, (list, tuple)):
+                        parent_id = parent_id[0] if parent_id else False
+                    parent = http.request.env['neat.clover.payment.request'].sudo().browse(
+                        parent_id
+                    ).exists()
+                    if not parent or not parent.uti:
+                        _logger.info(
+                            "poll_payment_request called for transaction_id: %s returning 404 because parent preauth uti missing",
+                            read_request['transaction_id'],
+                        )
+                        return json.dumps({'status': 404})
+                    poll_data['uti'] = parent.uti
+                    if request_type == 'capture':
+                        poll_data['is_capture_preauth'] = True
+                    else:
+                        poll_data['is_void_preauth'] = True
+                return json.dumps({'status': 200, 'data': poll_data})
             time.sleep(1)
 
     @http.route('/pos_clover/notify_payment_request',type='http', auth='public', methods=['POST'], csrf=False, cors='*')
@@ -492,8 +666,10 @@ class PosCloverController(http.Controller):
         logs = r.get('logs', "")
 
         transaction_id = r.get('transaction_id', None)
-        if status != 'done' and status != 'failed' and status != 'cancelled' and status != 'refunded' and status != 'resent_done' and status != 'resent_refunded':
-            _logger.info("complete called for transaction_id: " + str(transaction_id) + " returning 400 because status is not done, failed, cancelled, refunded, resent_done, or resent_refunded")
+        if status not in (
+            'done', 'failed', 'cancelled', 'refunded', 'resent_done', 'resent_refunded', 'voided', 'authorized',
+        ):
+            _logger.info("complete called for transaction_id: " + str(transaction_id) + " returning 400 because status is not done, failed, cancelled, refunded, resent_done, resent_refunded, voided, or authorized")
             return json.dumps({ 'status': 400 })
         card_type = None
         if 'card_type' in r:
@@ -538,7 +714,15 @@ class PosCloverController(http.Controller):
                     new_refunded_amount = ramount + curr_ramount
                     refunded_payment_refs[index].write({ 'uncommited_refunded_amt': new_refunded_amount })
                 index+=1
-        if status == 'done' or status == "resent_done":
+        cpr = current_payment_requests[0]
+        request_type = cpr['request_type'] or 'sale'
+        # Map generic terminal success onto preauth/void statuses when Android still sends "done".
+        if status == 'done':
+            if request_type == 'preauth':
+                status = 'authorized'
+            elif request_type == 'void_preauth':
+                status = 'voided'
+        if status == 'done' or status == "resent_done" or status == 'authorized' or status == 'voided':
             pr = {
                 'card_type': card_type,
                 'cardholder_name': cardholder_name,
@@ -557,7 +741,7 @@ class PosCloverController(http.Controller):
 
         current_payment_requests[0].write(pr)
         cpr = current_payment_requests[0]
-        if status in ('done', 'refunded', 'resent_done', 'resent_refunded') and 'clover.document.payment' in http.request.env:
+        if (status == 'done' or status == 'refunded' or status == 'resent_done' or status == 'resent_refunded' or status == 'authorized' or status == 'voided') and 'clover.document.payment' in http.request.env:
             document_helpers = http.request.env['clover.document.payment'].sudo()
             if document_helpers.is_quotation_or_invoice_request(cpr):
                 document_helpers.finalize_document_payment_request(

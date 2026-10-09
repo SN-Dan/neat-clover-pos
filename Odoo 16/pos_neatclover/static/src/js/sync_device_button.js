@@ -18,6 +18,13 @@ odoo.define('pos_neatclover.SyncDeviceButton', function (require) {
         });
     }
 
+    function hasNeatCloverTerminal(pos) {
+        const methods = (pos && pos.payment_methods) || [];
+        return methods.some(function (pm) {
+            return pm.use_payment_terminal === 'neatclover';
+        });
+    }
+
     class SyncDeviceButton extends PosComponent {
         setup() {
             super.setup();
@@ -31,6 +38,19 @@ odoo.define('pos_neatclover.SyncDeviceButton', function (require) {
     }
     SyncDeviceButton.template = 'pos_neatclover.SyncDeviceButton';
 
+    class PreAuthButton extends PosComponent {
+        setup() {
+            super.setup();
+            useListener('click', this.onClick);
+        }
+        onClick() {
+            if (window.displayPreAuthModal) {
+                window.displayPreAuthModal();
+            }
+        }
+    }
+    PreAuthButton.template = 'pos_neatclover.PreAuthButton';
+
     ProductScreen.addControlButton({
         component: SyncDeviceButton,
         condition: function () {
@@ -38,6 +58,14 @@ odoo.define('pos_neatclover.SyncDeviceButton', function (require) {
         },
     });
 
+    ProductScreen.addControlButton({
+        component: PreAuthButton,
+        condition: function () {
+            return hasNeatCloverTerminal(this.env.pos);
+        },
+    });
+
     Registries.Component.add(SyncDeviceButton);
+    Registries.Component.add(PreAuthButton);
     return SyncDeviceButton;
 });
