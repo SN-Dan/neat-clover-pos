@@ -5,4 +5,9 @@
             <i class="fa fa-tablet me-1"/>Sync Device
         </button>
     </t>
+    <t t-name="pos_neatclover.PreAuthButton">
+        <button class="control-button btn btn-light rounded-0 fw-bolder" t-on-click="() => this.click()">
+            <i class="fa fa-credit-card me-1"/>Clover Pre-Auth
+        </button>
+    </t>
 </templates>
